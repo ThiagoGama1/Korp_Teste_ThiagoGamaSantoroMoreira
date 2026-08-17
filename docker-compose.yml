@@ -1,0 +1,54 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: korp_postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-korp}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-korp}
+      POSTGRES_DB: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      # 5442 no host para não brigar com um Postgres local já instalado.
+      # Dentro da rede do Docker continua sendo 5432.
+      - "${POSTGRES_PORT:-5442}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-korp} -d postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  estoque:
+    build: ./estoque
+    container_name: korp_estoque
+    environment:
+      PORT: 7080
+      DATABASE_URL: postgres://${POSTGRES_USER:-korp}:${POSTGRES_PASSWORD:-korp}@postgres:5432/estoque_db?sslmode=disable
+    ports:
+      - "${ESTOQUE_PORT:-7080}:7080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  faturamento:
+    build: ./faturamento
+    container_name: korp_faturamento
+    environment:
+      PORT: 7081
+      DATABASE_URL: postgres://${POSTGRES_USER:-korp}:${POSTGRES_PASSWORD:-korp}@postgres:5432/faturamento_db?sslmode=disable
+      ESTOQUE_URL: http://estoque:7080
+      ESTOQUE_TIMEOUT: ${ESTOQUE_TIMEOUT:-3s}
+      DISJUNTOR_FALHAS: ${DISJUNTOR_FALHAS:-5}
+      DISJUNTOR_ESPERA: ${DISJUNTOR_ESPERA:-10s}
+    ports:
+      - "${FATURAMENTO_PORT:-7081}:7081"
+    # De propósito: NÃO depende do estoque.
+    # O faturamento tem que subir e continuar de pé com o estoque fora —
+    # é isso que torna o cenário de falha demonstrável.
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

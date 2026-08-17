@@ -8,9 +8,9 @@ implementados em momentos diferentes e precisam concordar sem depender de memór
 | Componente | Stack | Porta |
 |---|---|---|
 | `web` | Angular + Angular Material | 4200 |
-| `faturamento` | Go + Gin + GORM | 8082 |
-| `estoque` | Go + Gin + GORM | 8081 |
-| `postgres` | PostgreSQL 16 | 5432 |
+| `faturamento` | Go + Gin + GORM | 7081 |
+| `estoque` | Go + Gin + GORM | 7080 |
+| `postgres` | PostgreSQL 16 | 5442 no host, 5432 na rede do Docker |
 
 O Angular fala com os dois serviços. O `faturamento` fala com o `estoque` por HTTP.
 O `estoque` nunca chama o `faturamento` — a dependência é de mão única.
@@ -101,7 +101,7 @@ sistema quebrado. São mensagens diferentes na tela — a de 409 explica o que f
 (reduzir a quantidade), a de 503 oferece "Tentar novamente". Essa separação é metade
 do requisito obrigatório 2.
 
-## Endpoints — `estoque` (8081)
+## Endpoints — `estoque` (7080)
 
 | Método | Rota | Observação |
 |---|---|---|
@@ -145,7 +145,7 @@ Regras internas:
 - `singleflight` na chave: se duas requisições com a mesma chave chegarem ao mesmo tempo,
   só uma executa e as duas recebem o mesmo resultado.
 
-## Endpoints — `faturamento` (8082)
+## Endpoints — `faturamento` (7081)
 
 | Método | Rota | Observação |
 |---|---|---|

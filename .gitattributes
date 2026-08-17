@@ -1,0 +1,14 @@
+# Normaliza quebra de linha. Sem isso, o Windows salva CRLF, o gofmt reclama
+# e o container Linux recebe arquivos com \r no fim de cada linha.
+* text=auto eol=lf
+
+*.go   text eol=lf
+*.md   text eol=lf
+*.yml  text eol=lf
+*.sql  text eol=lf
+*.json text eol=lf
+*.ts   text eol=lf
+*.html text eol=lf
+*.css  text eol=lf
+
+Dockerfile text eol=lf

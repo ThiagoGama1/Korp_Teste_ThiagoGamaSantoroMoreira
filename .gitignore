@@ -1,0 +1,17 @@
+# Ambiente
+.env
+
+# Go
+*.exe
+*.test
+/estoque/bin/
+/faturamento/bin/
+
+# Node / Angular
+node_modules/
+/web/dist/
+/web/.angular/
+
+# Editor
+.vscode/
+.idea/
