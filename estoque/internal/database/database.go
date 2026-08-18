@@ -9,7 +9,8 @@ import (
 )
 
 func tentarConectar(URLBanco string) (*gorm.DB, error) {
-	db, err := gorm.Open(postgres.Open(URLBanco), &gorm.Config{})
+	db, err := gorm.Open(postgres.Open(URLBanco), &gorm.Config{TranslateError: true})
+
 	if err != nil {
 		return nil, err
 	}
