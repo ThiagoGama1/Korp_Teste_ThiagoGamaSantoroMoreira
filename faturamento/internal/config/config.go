@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -11,6 +12,9 @@ type Config struct {
 	URLBanco       string
 	URLEstoque     string
 	TimeoutEstoque time.Duration
+
+	DisjuntorFalhas int
+	DisjuntorEspera time.Duration
 }
 
 // Carregar lê o ambiente e valida. Só devolve erro — quem decide encerrar o
@@ -36,11 +40,18 @@ func Carregar() (*Config, error) {
 		return nil, err
 	}
 
+	espera, err := lerDuracao("DISJUNTOR_ESPERA", 10*time.Second)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Config{
-		PortaHTTP:      valorOu(os.Getenv("PORT"), "7081"),
-		URLBanco:       urlBanco,
-		URLEstoque:     urlEstoque,
-		TimeoutEstoque: timeout,
+		PortaHTTP:       valorOu(os.Getenv("PORT"), "7081"),
+		URLBanco:        urlBanco,
+		URLEstoque:      urlEstoque,
+		TimeoutEstoque:  timeout,
+		DisjuntorFalhas: lerInteiro("DISJUNTOR_FALHAS", 5),
+		DisjuntorEspera: espera,
 	}, nil
 }
 
@@ -55,6 +66,17 @@ func lerDuracao(chave string, padrao time.Duration) (time.Duration, error) {
 		return 0, errors.New("config: " + chave + " precisa ser uma duração válida, ex: 3s")
 	}
 	return duracao, nil
+}
+
+// lerInteiro não devolve erro: um valor inválido aqui cai no padrão em vez de
+// impedir o serviço de subir. Diferente do endereço do banco, um limite de
+// falhas errado não causa dano silencioso.
+func lerInteiro(chave string, padrao int) int {
+	valor, err := strconv.Atoi(os.Getenv(chave))
+	if err != nil || valor <= 0 {
+		return padrao
+	}
+	return valor
 }
 
 func valorOu(v, padrao string) string {

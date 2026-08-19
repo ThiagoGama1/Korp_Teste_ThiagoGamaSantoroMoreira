@@ -38,7 +38,8 @@ func main() {
 		log.Fatalf("faturamento: %v", err)
 	}
 
-	estoque := cliente.NovoEstoque(cfg.URLEstoque, cfg.TimeoutEstoque)
+	disjuntor := cliente.NovoDisjuntor(cfg.DisjuntorFalhas, cfg.DisjuntorEspera)
+	estoque := cliente.NovoEstoque(cfg.URLEstoque, cfg.TimeoutEstoque, disjuntor)
 
 	r := gin.Default()
 	routes.RegistrarHealth(r, db)
