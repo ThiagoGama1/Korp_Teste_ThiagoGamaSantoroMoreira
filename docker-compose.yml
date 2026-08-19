@@ -50,5 +50,14 @@ services:
       postgres:
         condition: service_healthy
 
+  web:
+    build: ./web
+    container_name: korp_web
+    ports:
+      - "${WEB_PORT:-4200}:80"
+    # Sem depends_on nos serviços: o frontend é estático e sobe sozinho. Se a API
+    # estiver fora, a tela abre e mostra a mensagem de erro — que é justamente o
+    # comportamento que o requisito de tratamento de falhas pede.
+
 volumes:
   postgres_data:
