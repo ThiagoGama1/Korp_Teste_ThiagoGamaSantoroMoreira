@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 
@@ -139,4 +141,109 @@ func (s *Nota) gravarItem(notaID uint, produto *cliente.Produto, quantidade int)
 		Quantidade:       quantidade,
 	}
 	return s.db.Create(&item).Error
+}
+
+// Imprimir é o coração do teste: fecha a nota no faturamento e debita o saldo no
+// estoque. São dois bancos em dois serviços, então não existe transação cobrindo
+// os dois. A consistência vem da idempotência, não de compensação.
+//
+// A ordem importa:
+//
+//  1. valida (aberta, com itens)
+//  2. gera e GRAVA a chave antes de qualquer chamada de rede
+//  3. debita no estoque com essa chave
+//  4. só então fecha a nota
+//
+// Se o estoque estiver fora no passo 3, nada foi debitado e a nota continua
+// ABERTA: o usuário tenta de novo. Se o débito passar e o passo 4 falhar, a nota
+// fica ABERTA com a chave gravada — uma nova impressão manda a MESMA chave, o
+// estoque devolve o resultado guardado sem redebitar, e o fechamento se completa.
+func (s *Nota) Imprimir(ctx context.Context, notaID uint) (*model.Nota, error) {
+	nota, err := s.Buscar(notaID)
+	if err != nil {
+		return nil, err
+	}
+	if !nota.EstaAberta() {
+		return nil, ErrNotaNaoAberta
+	}
+	if len(nota.Itens) == 0 {
+		return nil, ErrNotaVazia
+	}
+
+	chave, err := s.garantirChave(nota)
+	if err != nil {
+		return nil, err
+	}
+
+	// Chamada feita mesmo quando BaixaConfirmada já é true: com a mesma chave o
+	// estoque devolve o resultado anterior sem debitar. Um caminho só, em vez de
+	// dois com estados diferentes.
+	if _, err := s.estoque.Baixar(ctx, chave, itensParaBaixa(nota)); err != nil {
+		return nil, err
+	}
+
+	if err := s.fechar(nota.ID); err != nil {
+		return nil, err
+	}
+	return s.Buscar(notaID)
+}
+
+// garantirChave grava a chave no banco ANTES de o estoque ser chamado.
+//
+// Se ela fosse gerada na hora da chamada, cada nova tentativa criaria uma chave
+// diferente, o estoque trataria como pedidos distintos e debitaria de novo — que
+// é exatamente o bug que a idempotência existe para impedir. A chave é da nota,
+// não da tentativa.
+func (s *Nota) garantirChave(nota *model.Nota) (string, error) {
+	if nota.IdempotencyKey != nil && *nota.IdempotencyKey != "" {
+		return *nota.IdempotencyKey, nil
+	}
+
+	chave, err := gerarChave(nota.ID)
+	if err != nil {
+		return "", err
+	}
+
+	if err := s.db.Model(&model.Nota{}).Where("id = ?", nota.ID).
+		Update("idempotency_key", chave).Error; err != nil {
+		return "", fmt.Errorf("service: falha ao gravar a chave de idempotência: %w", err)
+	}
+
+	nota.IdempotencyKey = &chave
+	return chave, nil
+}
+
+// fechar usa Updates com colunas explícitas em vez de Save(nota): Save tentaria
+// gravar também os itens carregados pelo Preload, e nesse ponto eles não mudaram.
+func (s *Nota) fechar(notaID uint) error {
+	err := s.db.Model(&model.Nota{}).Where("id = ?", notaID).Updates(map[string]any{
+		"status":           model.StatusFechada,
+		"baixa_confirmada": true,
+	}).Error
+	if err != nil {
+		return fmt.Errorf("service: falha ao fechar a nota %d: %w", notaID, err)
+	}
+	return nil
+}
+
+func itensParaBaixa(nota *model.Nota) []cliente.ItemBaixa {
+	itens := make([]cliente.ItemBaixa, 0, len(nota.Itens))
+	for _, item := range nota.Itens {
+		itens = append(itens, cliente.ItemBaixa{
+			ProdutoID:  item.ProdutoID,
+			Quantidade: item.Quantidade,
+		})
+	}
+	return itens
+}
+
+// gerarChave usa crypto/rand em vez de math/rand: o valor precisa ser único
+// entre processos e reinícios, e math/rand sem semente repete a mesma sequência
+// a cada boot.
+func gerarChave(notaID uint) (string, error) {
+	aleatorio := make([]byte, 8)
+	if _, err := rand.Read(aleatorio); err != nil {
+		return "", fmt.Errorf("service: falha ao gerar a chave de idempotência: %w", err)
+	}
+	return fmt.Sprintf("nota-%d-%s", notaID, hex.EncodeToString(aleatorio)), nil
 }
