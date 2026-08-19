@@ -151,6 +151,16 @@ func (e *Estoque) enviar(ctx context.Context, metodo, url string, corpo []byte, 
 
 	resp, err := e.http.Do(req)
 	if err != nil {
+		// Cancelamento vindo de quem chamou (usuário fechou a aba, requisição
+		// abortada) não é culpa do estoque, e não pode contar como falha: cinco
+		// abas fechadas abririam o disjuntor contra um serviço saudável.
+		//
+		// Timeout é diferente e continua contando — ali o estoque realmente não
+		// respondeu no prazo.
+		if errors.Is(err, context.Canceled) {
+			return nil, fmt.Errorf("%w: requisição cancelada", ErrIndisponivel)
+		}
+
 		// Conexão recusada, DNS falhando, timeout: o estoque não está alcançável.
 		// Não distinguimos os três porque a ação do usuário é a mesma nos três.
 		e.disjuntor.RegistrarFalha()

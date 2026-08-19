@@ -31,13 +31,13 @@ func tentarConectar(URLBanco string) (*gorm.DB, error) {
 }
 func Conectar(URLBanco string) (*gorm.DB, error) {
 	var ultimoErro error
-	for i := 0; i <= 9; i++ {
+	for i := 1; i <= 10; i++ {
 		db, err := tentarConectar(URLBanco)
 		if err == nil {
 			return db, nil
 		}
 		ultimoErro = err
-		log.Printf("Banco indisponível (tentativa %d/10): %v", i, err)
+		log.Printf("estoque: banco indisponível (tentativa %d/10): %v", i, err)
 		if i < 10 {
 			time.Sleep(2 * time.Second)
 		}

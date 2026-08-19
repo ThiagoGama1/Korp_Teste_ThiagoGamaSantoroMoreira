@@ -44,6 +44,9 @@ func responderErroDeServico(c *gin.Context, err error) {
 		responderErro(c, http.StatusBadRequest, "PAYLOAD_INVALIDO", err.Error())
 	case errors.Is(err, service.ErrNotaNaoAberta):
 		responderErro(c, http.StatusConflict, "NOTA_NAO_ABERTA", "A nota já foi fechada e não pode mais ser alterada")
+	case errors.Is(err, service.ErrBaixaPendente):
+		responderErro(c, http.StatusConflict, "BAIXA_PENDENTE",
+			"O estoque desta nota já foi baixado. Conclua a impressão antes de alterar os itens.")
 	case errors.Is(err, service.ErrNotaVazia):
 		responderErro(c, http.StatusConflict, "NOTA_VAZIA", "A nota não tem itens")
 	case errors.Is(err, cliente.ErrSaldoInsuficiente):

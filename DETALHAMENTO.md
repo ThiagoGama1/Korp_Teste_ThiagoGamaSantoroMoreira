@@ -204,9 +204,13 @@ A solução escolhida foi idempotência em vez de saga com compensação. Em vez
 3. O estoque debita numa transação e grava a chave **junto, na mesma transação**
 4. Chave repetida → devolve o resultado guardado, sem debitar de novo
 
+A gravação da chave usa `WHERE idempotency_key IS NULL` e confere `RowsAffected`, em vez de um UPDATE direto. Sem essa condição, dois cliques simultâneos passariam ambos pela verificação de "ainda não tem chave", gerariam chaves aleatórias **diferentes**, e o estoque veria dois pedidos distintos — debitando duas vezes. A condição dentro do UPDATE transforma "verificar e gravar" num único passo indivisível: só uma requisição altera a linha, e a outra descobre isso pelo `RowsAffected` zerado e reusa a chave da vencedora.
+
 O passo 3 ser uma transação só também importa: se a chave fosse gravada depois do commit do débito, existiria um instante com o saldo já baixado e a chave ainda inexistente — e um retry nesse instante debitaria de novo.
 
 A resposta é guardada como texto já serializado, numa coluna `JSON` (e não `JSONB`, que normaliza o documento reordenando as chaves). Assim a repetição devolve exatamente a mesma resposta, em vez de uma remontada — e remontar é onde entraria a chance de divergir.
+
+Marcar a baixa e fechar a nota são duas gravações separadas de propósito. Se fossem uma só, o estado intermediário — débito feito, nota ainda aberta — não existiria, e não haveria como distinguir "o estoque nunca foi chamado" de "o estoque debitou e o fechamento falhou". Enquanto `baixa_confirmada` estiver marcada, a nota recusa alteração de itens: incluir um produto aí faria o estoque replayar a confirmação antiga e a nota fecharia com itens que nunca saíram.
 
 O detalhe que faz tudo funcionar é o passo 1. Se a chave fosse gerada no momento da chamada, cada nova tentativa criaria uma chave diferente, o estoque trataria como pedidos distintos, e debitaria de novo — exatamente o bug que a idempotência existe para impedir. **A chave é da nota, não da tentativa.**
 
@@ -215,7 +219,8 @@ Isso cobre os três cenários de uma vez:
 | Falha | O que acontece | Como se resolve |
 |---|---|---|
 | Estoque fora | nada debitado, nota `ABERTA` | usuário clica de novo |
-| Estoque debitou, faturamento morreu antes de fechar | saldo baixado, nota `ABERTA` com a chave salva | nova impressão manda a **mesma** chave → estoque devolve o resultado guardado sem redebitar → nota fecha |
+| Estoque debitou, faturamento morreu antes de fechar | saldo baixado, nota `ABERTA` com `baixa_confirmada = true` | nova impressão manda a **mesma** chave → estoque devolve o resultado guardado sem redebitar → nota fecha |
+| Recusa por saldo insuficiente | nada debitado, chave **descartada** | nova impressão gera chave nova e relê o saldo — a nota não fica presa ao "não" anterior |
 | Clique duplo | duas requisições, mesma chave | o débito acontece uma vez só |
 
 ## Concorrência (opcional a)
@@ -252,6 +257,28 @@ As goroutines partem juntas através de um canal usado como barreira, para a dis
 cd estoque
 TEST_DATABASE_URL="postgres://korp:korp@localhost:5442/estoque_db?sslmode=disable" go test ./... -v
 ```
+
+Do lado do faturamento há mais dois testes, que atravessam a fronteira entre os serviços:
+
+| Teste | Cenário | Resultado esperado |
+|---|---|---|
+| `TestImprimirConcorrenteDebitaUmaVez` | 30 impressões simultâneas da mesma nota | o estoque é debitado uma única vez |
+| `TestNotaRecusadaPodeSerImpressaDepois` | nota recusada por saldo, estoque reposto | a chave é descartada e a nova tentativa relê o saldo |
+
+```bash
+cd faturamento
+TEST_DATABASE_URL="postgres://korp:korp@localhost:5442/faturamento_db?sslmode=disable" TEST_ESTOQUE_URL="http://localhost:7080" go test ./... -v
+```
+
+Estes dois existem por causa de uma lição: a suíte do estoque passava com 100 goroutines disputando saldo, e mesmo assim havia um furo de idempotência do lado do faturamento — a geração da chave era um *check-then-act* sem lock. **Um teste que cobre só um lado da fronteira dá confiança sobre a metade errada.**
+
+## Ajuste de saldo pelo cadastro
+
+O `PUT /produtos/:id` grava o saldo enviado de forma absoluta, sem passar pelo bloqueio usado na baixa. Isso significa que um formulário aberto antes de uma impressão e salvo depois sobrescreve o saldo já debitado.
+
+É uma escolha, não um descuido: o enunciado pede saldo como campo do cadastro de produto, e ajuste de inventário em ERP funciona assim mesmo — o número informado pelo operador substitui o calculado, porque a contagem física é a autoridade. O que um sistema em produção acrescentaria é registro de quem ajustou, quando e por quê, para o histórico não se perder.
+
+A operação de venda, essa sim, nunca escreve saldo absoluto: ela sempre debita relativo (`saldo = saldo - ?`) dentro de uma transação com a linha travada.
 
 ## Inteligência artificial (opcional b)
 

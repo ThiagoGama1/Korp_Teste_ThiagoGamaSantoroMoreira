@@ -6,8 +6,10 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/ThiagoGama1/Korp_Teste_ThiagoGamaSantoroMoreira/faturamento/internal/cliente"
 	"github.com/ThiagoGama1/Korp_Teste_ThiagoGamaSantoroMoreira/faturamento/internal/model"
@@ -118,21 +120,26 @@ func (s *Nota) exigirNotaAberta(notaID uint) (*model.Nota, error) {
 	if !nota.EstaAberta() {
 		return nil, ErrNotaNaoAberta
 	}
+	// Status ABERTA nao basta: se o estoque ja debitou e o fechamento falhou, a
+	// nota fica aberta com a baixa confirmada. Deixar incluir item aqui faria o
+	// estoque replayar a confirmacao antiga na proxima impressao, e a nota
+	// fecharia com itens que nunca sairam do estoque.
+	if nota.BaixaConfirmada {
+		return nil, ErrBaixaPendente
+	}
 	return nota, nil
 }
 
+// gravarItem soma a quantidade quando o produto ja esta na nota.
+//
+// Feito com ON CONFLICT em vez de consultar-e-decidir: a consulta seguida de
+// insercao tem uma janela entre os dois passos, e dois cliques simultaneos
+// passariam os dois pelo "nao existe". O ON CONFLICT delega a decisao ao indice
+// unico, que e avaliado dentro da propria insercao.
+//
+// A soma usa nota_itens.quantidade + ? e nao um valor calculado em Go, para o
+// incremento partir do valor que estiver no banco na hora da escrita.
 func (s *Nota) gravarItem(notaID uint, produto *cliente.Produto, quantidade int) error {
-	var existente model.NotaItem
-	err := s.db.Where("nota_id = ? AND produto_id = ?", notaID, produto.ID).First(&existente).Error
-
-	if err == nil {
-		existente.Quantidade += quantidade
-		return s.db.Save(&existente).Error
-	}
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return fmt.Errorf("service: falha ao consultar item: %w", err)
-	}
-
 	item := model.NotaItem{
 		NotaID:           notaID,
 		ProdutoID:        produto.ID,
@@ -140,7 +147,18 @@ func (s *Nota) gravarItem(notaID uint, produto *cliente.Produto, quantidade int)
 		ProdutoDescricao: produto.Descricao,
 		Quantidade:       quantidade,
 	}
-	return s.db.Create(&item).Error
+
+	err := s.db.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "nota_id"}, {Name: "produto_id"}},
+		DoUpdates: clause.Assignments(map[string]any{
+			"quantidade": gorm.Expr("nota_itens.quantidade + ?", quantidade),
+		}),
+	}).Create(&item).Error
+
+	if err != nil {
+		return fmt.Errorf("service: falha ao gravar o item: %w", err)
+	}
+	return nil
 }
 
 // Imprimir é o coração do teste: fecha a nota no faturamento e debita o saldo no
@@ -149,15 +167,16 @@ func (s *Nota) gravarItem(notaID uint, produto *cliente.Produto, quantidade int)
 //
 // A ordem importa:
 //
-//  1. valida (aberta, com itens)
+//  1. valida (aberta, sem baixa pendente, com itens)
 //  2. gera e GRAVA a chave antes de qualquer chamada de rede
 //  3. debita no estoque com essa chave
-//  4. só então fecha a nota
+//  4. marca a baixa como confirmada
+//  5. só então fecha a nota
 //
-// Se o estoque estiver fora no passo 3, nada foi debitado e a nota continua
-// ABERTA: o usuário tenta de novo. Se o débito passar e o passo 4 falhar, a nota
-// fica ABERTA com a chave gravada — uma nova impressão manda a MESMA chave, o
-// estoque devolve o resultado guardado sem redebitar, e o fechamento se completa.
+// Os passos 4 e 5 são gravações separadas de propósito. Se fossem uma só, o
+// estado intermediário — débito feito, nota ainda aberta — não existiria, e não
+// haveria como distinguir "o estoque nunca foi chamado" de "o estoque debitou e
+// o fechamento falhou". São situações com tratamentos opostos.
 func (s *Nota) Imprimir(ctx context.Context, notaID uint) (*model.Nota, error) {
 	nota, err := s.Buscar(notaID)
 	if err != nil {
@@ -179,13 +198,46 @@ func (s *Nota) Imprimir(ctx context.Context, notaID uint) (*model.Nota, error) {
 	// estoque devolve o resultado anterior sem debitar. Um caminho só, em vez de
 	// dois com estados diferentes.
 	if _, err := s.estoque.Baixar(ctx, chave, itensParaBaixa(nota)); err != nil {
+		s.descartarChaveSeNadaFoiDebitado(nota, err)
 		return nil, err
 	}
 
+	if err := s.marcarBaixaConfirmada(nota.ID); err != nil {
+		return nil, err
+	}
 	if err := s.fechar(nota.ID); err != nil {
 		return nil, err
 	}
 	return s.Buscar(notaID)
+}
+
+// descartarChaveSeNadaFoiDebitado apaga a chave quando o estoque RECUSOU o
+// pedido.
+//
+// Recusa por saldo significa que nada foi debitado — e o estoque guardou esse
+// "não" associado à chave. Se ela ficasse gravada na nota, toda nova tentativa
+// reenviaria a mesma chave e receberia o mesmo 409 de volta, mesmo depois de o
+// estoque ser reposto ou a nota ser reduzida: a nota ficaria travada para sempre.
+//
+// Apagando, a próxima impressão gera chave nova e vale como um pedido novo — que
+// é o correto, porque não há efeito anterior a proteger.
+//
+// Já um erro de indisponibilidade mantém a chave: aí não se sabe se o estoque
+// chegou a debitar antes de a conexão cair, e reenviar a mesma chave é
+// justamente o que evita o débito em dobro.
+func (s *Nota) descartarChaveSeNadaFoiDebitado(nota *model.Nota, errDaBaixa error) {
+	if !errors.Is(errDaBaixa, cliente.ErrSaldoInsuficiente) {
+		return
+	}
+
+	if err := s.db.Model(&model.Nota{}).Where("id = ?", nota.ID).
+		Update("idempotency_key", nil).Error; err != nil {
+		// Não propaga: o erro que interessa ao usuário é o da recusa. A chave
+		// órfã só custa uma nova tentativa dando o mesmo 409.
+		log.Printf("faturamento: falha ao descartar a chave da nota %d: %v", nota.ID, err)
+		return
+	}
+	nota.IdempotencyKey = nil
 }
 
 // garantirChave grava a chave no banco ANTES de o estoque ser chamado.
@@ -194,6 +246,13 @@ func (s *Nota) Imprimir(ctx context.Context, notaID uint) (*model.Nota, error) {
 // diferente, o estoque trataria como pedidos distintos e debitaria de novo — que
 // é exatamente o bug que a idempotência existe para impedir. A chave é da nota,
 // não da tentativa.
+//
+// A gravação usa `WHERE idempotency_key IS NULL` e confere RowsAffected em vez de
+// um UPDATE direto. Sem essa condição, dois cliques simultâneos passariam os dois
+// pela verificação de nil, gerariam chaves aleatórias DIFERENTES, e o estoque
+// veria dois pedidos distintos — debitando duas vezes. A condição no UPDATE torna
+// "verificar e gravar" um único passo indivisível: só uma das requisições altera
+// a linha, e a outra descobre isso pelo RowsAffected zerado.
 func (s *Nota) garantirChave(nota *model.Nota) (string, error) {
 	if nota.IdempotencyKey != nil && *nota.IdempotencyKey != "" {
 		return *nota.IdempotencyKey, nil
@@ -204,22 +263,54 @@ func (s *Nota) garantirChave(nota *model.Nota) (string, error) {
 		return "", err
 	}
 
-	if err := s.db.Model(&model.Nota{}).Where("id = ?", nota.ID).
-		Update("idempotency_key", chave).Error; err != nil {
-		return "", fmt.Errorf("service: falha ao gravar a chave de idempotência: %w", err)
+	resultado := s.db.Model(&model.Nota{}).
+		Where("id = ? AND idempotency_key IS NULL", nota.ID).
+		Update("idempotency_key", chave)
+
+	if resultado.Error != nil {
+		return "", fmt.Errorf("service: falha ao gravar a chave de idempotência: %w", resultado.Error)
+	}
+
+	// Zero linhas: outra requisição gravou a chave entre a leitura e agora. A
+	// chave válida é a dela — a desta tentativa é descartada.
+	if resultado.RowsAffected == 0 {
+		return s.relerChave(nota)
 	}
 
 	nota.IdempotencyKey = &chave
 	return chave, nil
 }
 
+func (s *Nota) relerChave(nota *model.Nota) (string, error) {
+	var atual model.Nota
+	if err := s.db.Select("idempotency_key").First(&atual, nota.ID).Error; err != nil {
+		return "", fmt.Errorf("service: falha ao reler a chave da nota %d: %w", nota.ID, err)
+	}
+	if atual.IdempotencyKey == nil || *atual.IdempotencyKey == "" {
+		return "", fmt.Errorf("service: a chave da nota %d sumiu durante a impressão", nota.ID)
+	}
+
+	nota.IdempotencyKey = atual.IdempotencyKey
+	return *atual.IdempotencyKey, nil
+}
+
+// marcarBaixaConfirmada registra que o estoque já debitou, antes de a nota ser
+// fechada. É esse registro que impede a nota de voltar a ser editável num
+// intervalo em que o saldo já saiu.
+func (s *Nota) marcarBaixaConfirmada(notaID uint) error {
+	err := s.db.Model(&model.Nota{}).Where("id = ?", notaID).
+		Update("baixa_confirmada", true).Error
+	if err != nil {
+		return fmt.Errorf("service: falha ao confirmar a baixa da nota %d: %w", notaID, err)
+	}
+	return nil
+}
+
 // fechar usa Updates com colunas explícitas em vez de Save(nota): Save tentaria
 // gravar também os itens carregados pelo Preload, e nesse ponto eles não mudaram.
 func (s *Nota) fechar(notaID uint) error {
-	err := s.db.Model(&model.Nota{}).Where("id = ?", notaID).Updates(map[string]any{
-		"status":           model.StatusFechada,
-		"baixa_confirmada": true,
-	}).Error
+	err := s.db.Model(&model.Nota{}).Where("id = ?", notaID).
+		Update("status", model.StatusFechada).Error
 	if err != nil {
 		return fmt.Errorf("service: falha ao fechar a nota %d: %w", notaID, err)
 	}

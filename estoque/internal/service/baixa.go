@@ -15,7 +15,15 @@ import (
 
 // ErrSaldoInsuficiente é devolvido junto com um corpo JSON já pronto, listando
 // quais produtos faltaram. O handler repassa esse corpo como está.
-var ErrSaldoInsuficiente = errors.New("saldo insuficiente")
+var (
+	ErrSaldoInsuficiente = errors.New("saldo insuficiente")
+
+	// ErrProdutoInexistente e separado de ErrSaldoInsuficiente de proposito:
+	// "nao existe" e "existe mas acabou" pedem acoes diferentes de quem chamou, e
+	// misturar os dois congelaria a classificacao errada no registro de
+	// idempotencia.
+	ErrProdutoInexistente = errors.New("produto nao encontrado")
+)
 
 type Baixa struct {
 	db *gorm.DB
@@ -99,6 +107,12 @@ func (s *Baixa) processar(ctx context.Context, chave string, itens []ItemBaixa) 
 			return err
 		}
 
+		if faltando := produtosInexistentes(itens, produtos); len(faltando) > 0 {
+			// Falha antes de gravar qualquer registro: pedido malformado nao vira
+			// resultado idempotente, para uma correcao poder ser reenviada.
+			return fmt.Errorf("%w: ids %v", ErrProdutoInexistente, faltando)
+		}
+
 		faltas := conferirSaldos(itens, produtos)
 		if len(faltas) > 0 {
 			corpo, errDeNegocio, err = registrarRecusa(tx, chave, faltas)
@@ -146,15 +160,7 @@ func conferirSaldos(itens []ItemBaixa, produtos map[uint]model.Produto) []faltaD
 	var faltas []faltaDeSaldo
 
 	for _, item := range itens {
-		produto, existe := produtos[item.ProdutoID]
-		if !existe {
-			faltas = append(faltas, faltaDeSaldo{
-				ProdutoID:  item.ProdutoID,
-				Solicitado: item.Quantidade,
-				Disponivel: 0,
-			})
-			continue
-		}
+		produto := produtos[item.ProdutoID]
 		if produto.Saldo < item.Quantidade {
 			faltas = append(faltas, faltaDeSaldo{
 				ProdutoID:     produto.ID,
@@ -165,6 +171,17 @@ func conferirSaldos(itens []ItemBaixa, produtos map[uint]model.Produto) []faltaD
 		}
 	}
 	return faltas
+}
+
+// produtosInexistentes devolve os ids pedidos que nao existem no cadastro.
+func produtosInexistentes(itens []ItemBaixa, produtos map[uint]model.Produto) []uint {
+	var faltando []uint
+	for _, item := range itens {
+		if _, existe := produtos[item.ProdutoID]; !existe {
+			faltando = append(faltando, item.ProdutoID)
+		}
+	}
+	return faltando
 }
 
 func debitar(tx *gorm.DB, chave string, itens []ItemBaixa, produtos map[uint]model.Produto) ([]byte, error) {
@@ -277,6 +294,12 @@ func validarItens(chave string, itens []ItemBaixa) error {
 		return fmt.Errorf("%w: informe ao menos um item", ErrDadosInvalidos)
 	}
 
+	// Ids repetidos sao recusados em vez de somados. Se passassem, cada linha
+	// seria conferida contra o mesmo saldo lido uma vez so, e a soma das duas
+	// poderia ultrapassar o disponivel — o segundo UPDATE falharia e viraria um
+	// 500 no lugar de um 409 honesto. Quem monta o pedido agrega antes.
+	vistos := make(map[uint]bool, len(itens))
+
 	for _, item := range itens {
 		if item.ProdutoID == 0 {
 			return fmt.Errorf("%w: produto_id é obrigatório", ErrDadosInvalidos)
@@ -284,6 +307,10 @@ func validarItens(chave string, itens []ItemBaixa) error {
 		if item.Quantidade <= 0 {
 			return fmt.Errorf("%w: a quantidade precisa ser maior que zero", ErrDadosInvalidos)
 		}
+		if vistos[item.ProdutoID] {
+			return fmt.Errorf("%w: o produto %d aparece mais de uma vez", ErrDadosInvalidos, item.ProdutoID)
+		}
+		vistos[item.ProdutoID] = true
 	}
 	return nil
 }

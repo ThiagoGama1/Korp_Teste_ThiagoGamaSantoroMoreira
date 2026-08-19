@@ -47,6 +47,10 @@ func (h *Baixa) Executar(c *gin.Context) {
 		c.Data(http.StatusConflict, "application/json; charset=utf-8", corpo)
 		return
 	}
+	if errors.Is(err, service.ErrProdutoInexistente) {
+		responderErro(c, http.StatusNotFound, "PRODUTO_NAO_ENCONTRADO", err.Error())
+		return
+	}
 	if errors.Is(err, service.ErrDadosInvalidos) {
 		responderErro(c, http.StatusBadRequest, "PAYLOAD_INVALIDO", err.Error())
 		return
