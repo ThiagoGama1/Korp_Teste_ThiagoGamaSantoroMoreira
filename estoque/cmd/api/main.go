@@ -39,6 +39,7 @@ func main() {
 	r.Use(middleware.CORS())
 	routes.RegistrarHealth(r, db)
 	routes.RegistrarProdutos(r, db)
+	routes.RegistrarBaixas(r, db)
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.PortaHTTP,

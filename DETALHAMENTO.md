@@ -201,8 +201,12 @@ A solução escolhida foi idempotência em vez de saga com compensação. Em vez
 
 1. O faturamento gera uma chave única e a **grava na nota antes de chamar o estoque**
 2. Chama `POST /baixas` com o header `Idempotency-Key`
-3. O estoque debita numa transação e grava a chave junto com o resultado
+3. O estoque debita numa transação e grava a chave **junto, na mesma transação**
 4. Chave repetida → devolve o resultado guardado, sem debitar de novo
+
+O passo 3 ser uma transação só também importa: se a chave fosse gravada depois do commit do débito, existiria um instante com o saldo já baixado e a chave ainda inexistente — e um retry nesse instante debitaria de novo.
+
+A resposta é guardada como texto já serializado, numa coluna `JSON` (e não `JSONB`, que normaliza o documento reordenando as chaves). Assim a repetição devolve exatamente a mesma resposta, em vez de uma remontada — e remontar é onde entraria a chance de divergir.
 
 O detalhe que faz tudo funcionar é o passo 1. Se a chave fosse gerada no momento da chamada, cada nova tentativa criaria uma chave diferente, o estoque trataria como pedidos distintos, e debitaria de novo — exatamente o bug que a idempotência existe para impedir. **A chave é da nota, não da tentativa.**
 
@@ -216,19 +220,38 @@ Isso cobre os três cenários de uma vez:
 
 ## Concorrência (opcional a)
 
-O débito não faz "ler o saldo, conferir, gravar" — são três momentos e cabe outra requisição no meio. Ele é um comando único:
+Cenário: um produto com saldo 1 disputado por várias notas ao mesmo tempo.
 
-```sql
-UPDATE produtos SET saldo = saldo - $1 WHERE id = $2 AND saldo >= $1
+A operação não faz "ler o saldo, conferir, gravar" como três momentos soltos — entre a leitura e a escrita caberia outra requisição, e as duas debitariam o mesmo item. Tudo acontece dentro de uma transação, e em duas camadas:
+
+**1. Bloqueio pessimista na leitura.** Os produtos são lidos com `SELECT ... FOR UPDATE`, o que trava aquelas linhas para qualquer outra transação até esta terminar. É o que fecha a janela entre conferir e debitar.
+
+**2. Condição no próprio UPDATE.** O débito é `UPDATE produtos SET saldo = saldo - ? WHERE id = ? AND saldo >= ?`. `RowsAffected == 0` significa que a condição não bateu — no SQL, "não alterou nada" não é erro, então a aplicação precisa checar esse número.
+
+A segunda camada é redundante com a primeira, e fica de propósito: se algum caminho futuro debitar sem travar antes, o banco ainda recusa em vez de deixar o saldo negativo. Somado ao `CHECK (saldo >= 0)` da tabela, são três barreiras para a mesma invariante.
+
+**Ordenação contra impasse.** Os itens são ordenados por `produto_id` antes do débito. Sem isso, duas notas com os mesmos produtos em ordem inversa travariam cada uma na linha que a outra segura — um deadlock que o Postgres resolve matando uma das transações, e que só aparece sob carga.
+
+**Por que a garantia está no banco e não no processo.** Um `sync.Mutex` em Go protegeria apenas uma instância: a trava vive na memória daquele processo, e duas réplicas do serviço teriam travas independentes protegendo o mesmo dado. O banco é o único ponto por onde todas as instâncias passam.
+
+### Validação automatizada
+
+Três testes de integração, rodando contra o Postgres real — um banco falso em memória não teria `FOR UPDATE` nem isolamento de transação, e o teste passaria sem provar nada.
+
+| Teste | Cenário | Resultado esperado |
+|---|---|---|
+| `TestBaixaConcorrencia` | saldo 1, **100 goroutines, chaves diferentes** | exatamente 1 confirmação, 99 recusas, saldo final 0 |
+| `TestBaixaIdempotencia` | saldo 100, **100 goroutines, mesma chave** | uma única baixa aplicada, saldo 98 |
+| `TestBaixaRecusaEhIdempotente` | repetir uma chave que falhou por saldo | mesmo erro, resposta idêntica, saldo intocado |
+
+As chaves são diferentes no primeiro e iguais no segundo de propósito: com a mesma chave, a idempotência responderia por todas as 100 e o teste não provaria nada sobre concorrência. São dois mecanismos distintos sendo verificados.
+
+As goroutines partem juntas através de um canal usado como barreira, para a disputa ser real em vez de escalonada.
+
+```bash
+cd estoque
+TEST_DATABASE_URL="postgres://korp:korp@localhost:5442/estoque_db?sslmode=disable" go test ./... -v
 ```
-
-A verificação e a escrita são atômicas. Duas requisições disputando o mesmo saldo 1 não se atropelam: uma altera a linha, a outra recebe `RowsAffected == 0`, que a aplicação lê como saldo insuficiente.
-
-Os itens são **ordenados por `produto_id`** antes do débito. Sem isso, duas notas com os mesmos produtos em ordem inversa poderiam travar uma na linha que a outra segura — um deadlock que só aparece sob carga.
-
-Isso vale para múltiplas instâncias do serviço, porque a garantia está no banco. Um `sync.Mutex` em memória não serviria: a trava viveria dentro de um processo, e duas réplicas teriam travas independentes protegendo o mesmo dado.
-
-> Validado por teste automatizado: 100 goroutines disparadas com `sync.WaitGroup` contra um produto de saldo 1 resultam em exatamente 1 sucesso, 99 recusas e saldo final 0.
 
 ## Inteligência artificial (opcional b)
 
