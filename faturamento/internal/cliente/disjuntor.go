@@ -87,6 +87,29 @@ func (d *Disjuntor) RegistrarFalha() {
 	}
 }
 
+// AbortarSonda desfaz uma sondagem que não chegou a ter resposta.
+//
+// Existe porque meioAberto é um estado sem saída por tempo: Permitir() só
+// transita de fechado e de aberto, então quem entra em meioAberto só sai por
+// RegistrarSucesso ou RegistrarFalha. Se a única tentativa liberada terminar sem
+// nenhum dos dois — caso do cancelamento vindo do próprio usuário — o disjuntor
+// ficaria preso recusando tudo, com o estoque saudável, até o processo reiniciar.
+//
+// Não conta como falha: a sondagem não foi respondida nem recusada, apenas não
+// aconteceu. O disjuntor volta a aberto com prazo novo e tenta de novo depois.
+func (d *Disjuntor) AbortarSonda() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if d.estado != meioAberto {
+		return
+	}
+
+	d.estado = aberto
+	d.reabreEm = time.Now().Add(d.esperaAteTentar)
+	log.Printf("faturamento: sondagem cancelada antes da resposta, nova tentativa em %s", d.esperaAteTentar)
+}
+
 // abrir assume que o mutex já está travado por quem chamou.
 func (d *Disjuntor) abrir() {
 	d.estado = aberto

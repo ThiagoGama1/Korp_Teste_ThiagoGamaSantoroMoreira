@@ -158,6 +158,11 @@ func (e *Estoque) enviar(ctx context.Context, metodo, url string, corpo []byte, 
 		// Timeout é diferente e continua contando — ali o estoque realmente não
 		// respondeu no prazo.
 		if errors.Is(err, context.Canceled) {
+			// Se esta chamada era a sondagem do estado meio-aberto, o disjuntor
+			// precisa saber que ela não teve desfecho — senão fica preso nesse
+			// estado, recusando tudo até o processo reiniciar. Com o disjuntor
+			// fechado, o método não faz nada.
+			e.disjuntor.AbortarSonda()
 			return nil, fmt.Errorf("%w: requisição cancelada", ErrIndisponivel)
 		}
 

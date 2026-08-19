@@ -230,7 +230,14 @@ func (s *Nota) descartarChaveSeNadaFoiDebitado(nota *model.Nota, errDaBaixa erro
 		return
 	}
 
-	if err := s.db.Model(&model.Nota{}).Where("id = ?", nota.ID).
+	// O WHERE inclui a própria chave, e não só o id.
+	//
+	// Sem esse predicado, um descarte atrasado apagaria uma chave nova gravada
+	// por outra tentativa no intervalo — e a impressão seguinte geraria uma
+	// terceira chave, fazendo o estoque debitar de novo. É a mesma guarda que o
+	// garantirChave usa, na direção oposta.
+	if err := s.db.Model(&model.Nota{}).
+		Where("id = ? AND idempotency_key = ?", nota.ID, *nota.IdempotencyKey).
 		Update("idempotency_key", nil).Error; err != nil {
 		// Não propaga: o erro que interessa ao usuário é o da recusa. A chave
 		// órfã só custa uma nova tentativa dando o mesmo 409.

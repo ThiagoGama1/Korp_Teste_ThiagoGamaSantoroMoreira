@@ -93,8 +93,15 @@ export class NotaDetalhe implements OnInit, OnDestroy {
     this.rota.paramMap
       .pipe(
         map((parametros) => Number(parametros.get('id'))),
-        switchMap((id) => this.service.buscar(id)),
-        finalize(() => this.carregando.set(false)),
+        // O finalize vai DENTRO do switchMap, na chamada HTTP.
+        //
+        // Colocado fora, ele nunca dispararia: paramMap é um Observable de vida
+        // longa que não completa enquanto a tela existe, e o switchMap absorve a
+        // conclusão da chamada interna sem propagá-la. O indicador de progresso
+        // só desligaria no ngOnDestroy — ou seja, ficaria girando a visita toda.
+        switchMap((id) =>
+          this.service.buscar(id).pipe(finalize(() => this.carregando.set(false))),
+        ),
         takeUntil(this.destruido$),
       )
       .subscribe({
