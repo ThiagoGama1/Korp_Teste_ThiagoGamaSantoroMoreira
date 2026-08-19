@@ -1,0 +1,78 @@
+<mat-card class="cartao">
+  <mat-card-header>
+    <mat-card-title>Cadastrar produto</mat-card-title>
+  </mat-card-header>
+
+  <mat-card-content>
+    <form [formGroup]="form" (ngSubmit)="salvar()" class="formulario">
+      <mat-form-field appearance="outline">
+        <mat-label>Código</mat-label>
+        <input matInput formControlName="codigo" placeholder="CAD-001" />
+      </mat-form-field>
+
+      <mat-form-field appearance="outline">
+        <mat-label>Descrição</mat-label>
+        <input matInput formControlName="descricao" placeholder="Cadeira Gamer" />
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" class="campo-saldo">
+        <mat-label>Saldo</mat-label>
+        <input matInput type="number" formControlName="saldo" min="0" />
+      </mat-form-field>
+
+      <button mat-flat-button type="submit" [disabled]="salvando()">
+        {{ salvando() ? 'Salvando...' : 'Cadastrar' }}
+      </button>
+    </form>
+  </mat-card-content>
+</mat-card>
+
+<mat-card class="cartao">
+  <mat-card-header>
+    <mat-card-title>Produtos em estoque</mat-card-title>
+    <button mat-icon-button (click)="carregar()" aria-label="Recarregar">
+      <mat-icon>refresh</mat-icon>
+    </button>
+  </mat-card-header>
+
+  @if (carregando()) {
+    <mat-progress-bar mode="indeterminate" />
+  }
+
+  <mat-card-content>
+    @if (!carregando() && produtos().length === 0) {
+      <p class="vazio">Nenhum produto cadastrado ainda.</p>
+    } @else {
+      <table mat-table [dataSource]="produtos()">
+        <ng-container matColumnDef="codigo">
+          <th mat-header-cell *matHeaderCellDef>Código</th>
+          <td mat-cell *matCellDef="let produto">{{ produto.codigo }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="descricao">
+          <th mat-header-cell *matHeaderCellDef>Descrição</th>
+          <td mat-cell *matCellDef="let produto">{{ produto.descricao }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="saldo">
+          <th mat-header-cell *matHeaderCellDef>Saldo</th>
+          <td mat-cell *matCellDef="let produto">
+            <span class="saldo" [class.zerado]="produto.saldo === 0">{{ produto.saldo }}</span>
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="acoes">
+          <th mat-header-cell *matHeaderCellDef></th>
+          <td mat-cell *matCellDef="let produto">
+            <button mat-icon-button (click)="remover(produto)" aria-label="Remover">
+              <mat-icon>delete_outline</mat-icon>
+            </button>
+          </td>
+        </ng-container>
+
+        <tr mat-header-row *matHeaderRowDef="colunas"></tr>
+        <tr mat-row *matRowDef="let linha; columns: colunas"></tr>
+      </table>
+    }
+  </mat-card-content>
+</mat-card>

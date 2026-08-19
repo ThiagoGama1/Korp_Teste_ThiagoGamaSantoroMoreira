@@ -1,0 +1,41 @@
+.cartao {
+  margin-bottom: 1.5rem;
+}
+
+.formulario {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  padding-top: 0.5rem;
+}
+
+.formulario mat-form-field {
+  flex: 1 1 12rem;
+}
+
+.campo-saldo {
+  flex: 0 1 8rem;
+}
+
+.formulario button {
+  margin-top: 0.4rem;
+}
+
+table {
+  width: 100%;
+}
+
+.saldo {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.saldo.zerado {
+  color: #b3261e;
+}
+
+.vazio {
+  color: rgb(0 0 0 / 0.6);
+  padding: 1rem 0;
+}
