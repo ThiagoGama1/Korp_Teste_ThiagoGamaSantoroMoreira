@@ -1,0 +1,12 @@
+html,
+body {
+  height: 100%;
+  margin: 0;
+  font-family: Roboto, 'Helvetica Neue', sans-serif;
+  background: #f6f7f9;
+  color: rgb(0 0 0 / 0.87);
+}
+
+* {
+  box-sizing: border-box;
+}
