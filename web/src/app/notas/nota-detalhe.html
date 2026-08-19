@@ -1,0 +1,125 @@
+@if (carregando()) {
+  <mat-progress-bar mode="indeterminate" />
+}
+
+@if (nota(); as nota) {
+  <mat-card class="cartao">
+    <mat-card-header>
+      <button mat-icon-button routerLink="/notas" aria-label="Voltar">
+        <mat-icon>arrow_back</mat-icon>
+      </button>
+      <mat-card-title>Nota #{{ nota.numero }}</mat-card-title>
+      <span class="etiqueta" [class.fechada]="!estaAberta()">{{ nota.status }}</span>
+    </mat-card-header>
+
+    <mat-card-content>
+      @if (!temItens()) {
+        <p class="vazio">Esta nota ainda não tem produtos.</p>
+      } @else {
+        <table mat-table [dataSource]="nota.itens">
+          <ng-container matColumnDef="codigo">
+            <th mat-header-cell *matHeaderCellDef>Código</th>
+            <td mat-cell *matCellDef="let item">{{ item.produto_codigo }}</td>
+          </ng-container>
+
+          <ng-container matColumnDef="descricao">
+            <th mat-header-cell *matHeaderCellDef>Produto</th>
+            <td mat-cell *matCellDef="let item">{{ item.produto_descricao }}</td>
+          </ng-container>
+
+          <ng-container matColumnDef="quantidade">
+            <th mat-header-cell *matHeaderCellDef>Qtd.</th>
+            <td mat-cell *matCellDef="let item">{{ item.quantidade }}</td>
+          </ng-container>
+
+          <ng-container matColumnDef="acoes">
+            <th mat-header-cell *matHeaderCellDef></th>
+            <td mat-cell *matCellDef="let item">
+              @if (estaAberta()) {
+                <button mat-icon-button (click)="removerItem(item.id)" aria-label="Remover item">
+                  <mat-icon>close</mat-icon>
+                </button>
+              }
+            </td>
+          </ng-container>
+
+          <tr mat-header-row *matHeaderRowDef="colunas"></tr>
+          <tr mat-row *matRowDef="let linha; columns: colunas"></tr>
+        </table>
+      }
+    </mat-card-content>
+  </mat-card>
+
+  @if (estaAberta()) {
+    <mat-card class="cartao">
+      <mat-card-header>
+        <mat-card-title>Adicionar produto</mat-card-title>
+      </mat-card-header>
+
+      <mat-card-content>
+        <form [formGroup]="form" (ngSubmit)="adicionarItem()" class="formulario">
+          <mat-form-field appearance="outline">
+            <mat-label>Produto</mat-label>
+            <mat-select formControlName="produtoId">
+              @for (produto of produtos(); track produto.id) {
+                <mat-option [value]="produto.id">
+                  {{ produto.codigo }} — {{ produto.descricao }} (saldo {{ produto.saldo }})
+                </mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="campo-qtd">
+            <mat-label>Quantidade</mat-label>
+            <input matInput type="number" formControlName="quantidade" min="1" />
+          </mat-form-field>
+
+          <button mat-stroked-button type="submit" [disabled]="adicionando()">
+            {{ adicionando() ? 'Adicionando...' : 'Adicionar' }}
+          </button>
+        </form>
+      </mat-card-content>
+    </mat-card>
+  }
+
+  <mat-card class="cartao acao">
+    <mat-card-content>
+      @if (estaAberta()) {
+        <button
+          mat-flat-button
+          class="botao-imprimir"
+          (click)="imprimir()"
+          [disabled]="!podeImprimir()"
+        >
+          @if (imprimindo()) {
+            <mat-spinner diameter="20" />
+          } @else {
+            <mat-icon>print</mat-icon>
+          }
+          <span>{{ imprimindo() ? 'Imprimindo...' : 'Imprimir nota' }}</span>
+        </button>
+
+        @if (!temItens()) {
+          <p class="dica">Adicione ao menos um produto para poder imprimir.</p>
+        }
+      } @else {
+        <p class="fechada-aviso">
+          <mat-icon>lock</mat-icon>
+          Esta nota já foi impressa e não pode mais ser alterada.
+        </p>
+      }
+
+      @if (erroImpressao(); as erro) {
+        <div class="erro">
+          <mat-icon>error_outline</mat-icon>
+          <span>{{ erro }}</span>
+          @if (podeTentarNovamente()) {
+            <button mat-stroked-button (click)="imprimir()" [disabled]="imprimindo()">
+              Tentar novamente
+            </button>
+          }
+        </div>
+      }
+    </mat-card-content>
+  </mat-card>
+}

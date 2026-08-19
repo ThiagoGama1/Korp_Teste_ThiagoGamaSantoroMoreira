@@ -1,0 +1,90 @@
+.cartao {
+  margin-bottom: 1.5rem;
+}
+
+mat-card-header {
+  align-items: center;
+  gap: 0.5rem;
+}
+
+table {
+  width: 100%;
+}
+
+.formulario {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  padding-top: 0.5rem;
+}
+
+.formulario mat-form-field {
+  flex: 1 1 16rem;
+}
+
+.campo-qtd {
+  flex: 0 1 8rem;
+}
+
+.formulario button {
+  margin-top: 0.4rem;
+}
+
+.etiqueta {
+  display: inline-block;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  background: #e6f4ea;
+  color: #1e6b34;
+}
+
+.etiqueta.fechada {
+  background: #eceff1;
+  color: #455a64;
+}
+
+.acao mat-card-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding-top: 1rem;
+}
+
+.botao-imprimir {
+  align-self: flex-start;
+  height: 3rem;
+  padding: 0 2rem;
+  font-size: 1rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.dica,
+.vazio {
+  color: rgb(0 0 0 / 0.6);
+  margin: 0;
+}
+
+.fechada-aviso {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #455a64;
+  margin: 0;
+}
+
+.erro {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.9rem 1rem;
+  border-radius: 8px;
+  background: #fdecea;
+  color: #8c1d18;
+}
