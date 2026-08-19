@@ -14,6 +14,7 @@ import (
 
 	"github.com/ThiagoGama1/Korp_Teste_ThiagoGamaSantoroMoreira/estoque/internal/config"
 	"github.com/ThiagoGama1/Korp_Teste_ThiagoGamaSantoroMoreira/estoque/internal/database"
+	"github.com/ThiagoGama1/Korp_Teste_ThiagoGamaSantoroMoreira/estoque/internal/middleware"
 	"github.com/ThiagoGama1/Korp_Teste_ThiagoGamaSantoroMoreira/estoque/internal/routes"
 )
 
@@ -35,6 +36,7 @@ func main() {
 	}
 
 	r := gin.Default()
+	r.Use(middleware.CORS())
 	routes.RegistrarHealth(r, db)
 	routes.RegistrarProdutos(r, db)
 

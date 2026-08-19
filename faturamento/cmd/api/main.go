@@ -15,6 +15,7 @@ import (
 	"github.com/ThiagoGama1/Korp_Teste_ThiagoGamaSantoroMoreira/faturamento/internal/cliente"
 	"github.com/ThiagoGama1/Korp_Teste_ThiagoGamaSantoroMoreira/faturamento/internal/config"
 	"github.com/ThiagoGama1/Korp_Teste_ThiagoGamaSantoroMoreira/faturamento/internal/database"
+	"github.com/ThiagoGama1/Korp_Teste_ThiagoGamaSantoroMoreira/faturamento/internal/middleware"
 	"github.com/ThiagoGama1/Korp_Teste_ThiagoGamaSantoroMoreira/faturamento/internal/routes"
 )
 
@@ -42,6 +43,7 @@ func main() {
 	estoque := cliente.NovoEstoque(cfg.URLEstoque, cfg.TimeoutEstoque, disjuntor)
 
 	r := gin.Default()
+	r.Use(middleware.CORS())
 	routes.RegistrarHealth(r, db)
 	routes.RegistrarNotas(r, db, estoque)
 
