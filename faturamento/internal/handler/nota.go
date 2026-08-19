@@ -97,6 +97,24 @@ func (h *Nota) RemoverItem(c *gin.Context) {
 	c.JSON(http.StatusOK, nota)
 }
 
+// Imprimir fecha a nota e debita o estoque. É a única rota que atravessa a
+// fronteira entre os dois serviços, então é a única que pode devolver 503.
+func (h *Nota) Imprimir(c *gin.Context) {
+	id, ok := idDaRota(c, "id")
+	if !ok {
+		return
+	}
+
+	// O context da requisição desce até a chamada HTTP ao estoque, carregando o
+	// prazo e o cancelamento junto.
+	nota, err := h.svc.Imprimir(c.Request.Context(), id)
+	if err != nil {
+		responderErroDeServico(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, nota)
+}
+
 // idDaRota lê um parâmetro numérico da URL. O segundo retorno diz se deu certo —
 // quando não dá, a resposta de erro já foi escrita e o handler só precisa sair.
 func idDaRota(c *gin.Context, nome string) (uint, bool) {

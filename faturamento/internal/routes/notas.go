@@ -22,5 +22,6 @@ func RegistrarNotas(r *gin.Engine, db *gorm.DB, estoque *cliente.Estoque) {
 		notas.GET("/:id", notaHandler.Buscar)
 		notas.POST("/:id/itens", notaHandler.AdicionarItem)
 		notas.DELETE("/:id/itens/:item_id", notaHandler.RemoverItem)
+		notas.POST("/:id/imprimir", notaHandler.Imprimir)
 	}
 }

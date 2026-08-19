@@ -46,6 +46,19 @@ func responderErroDeServico(c *gin.Context, err error) {
 		responderErro(c, http.StatusConflict, "NOTA_NAO_ABERTA", "A nota já foi fechada e não pode mais ser alterada")
 	case errors.Is(err, service.ErrNotaVazia):
 		responderErro(c, http.StatusConflict, "NOTA_VAZIA", "A nota não tem itens")
+	case errors.Is(err, cliente.ErrSaldoInsuficiente):
+		// errors.As recupera o erro concreto para repassar QUAIS produtos
+		// faltaram. Sem isso a tela só poderia dizer "não deu".
+		var falha *cliente.FalhaDeSaldo
+		if errors.As(err, &falha) {
+			c.JSON(http.StatusConflict, corpoErro{Erro: detalheErro{
+				Codigo:   "SALDO_INSUFICIENTE",
+				Mensagem: "Não há saldo suficiente para imprimir esta nota",
+				Detalhes: falha.Detalhes,
+			}})
+			return
+		}
+		responderErro(c, http.StatusConflict, "SALDO_INSUFICIENTE", "Não há saldo suficiente para imprimir esta nota")
 	case errors.Is(err, cliente.ErrIndisponivel):
 		// Log em nível separado: 503 aqui significa que o outro serviço caiu, e
 		// é o sinal que a gente quer ver no terminal durante a demonstração.
