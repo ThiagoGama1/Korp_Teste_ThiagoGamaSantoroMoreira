@@ -42,14 +42,18 @@ produtos
   codigo        text UNIQUE NOT NULL
   descricao     text NOT NULL
   saldo         integer NOT NULL CHECK (saldo >= 0)
-  created_at, updated_at
+  criado_em, alterado_em
 
 baixas                        -- registro de idempotência
   id            bigserial PK
   chave         text UNIQUE NOT NULL     -- valor do header Idempotency-Key
   status        text NOT NULL            -- CONFIRMADA | RECUSADA
-  resposta      jsonb NOT NULL           -- corpo devolvido na primeira vez
-  created_at
+  resposta      json NOT NULL            -- corpo devolvido na primeira vez
+  criado_em
+
+  -- json e nao jsonb: jsonb normaliza o documento (reordena chaves, reinsere
+  -- espacos), e aqui o que importa e a resposta repetida sair identica a
+  -- primeira. A migration 0002_baixas.sql detalha.
 ```
 
 ### `faturamento_db`
@@ -61,7 +65,7 @@ notas
   status            text NOT NULL             -- ABERTA | FECHADA
   idempotency_key   text                      -- gerada e salva ANTES de chamar o estoque
   baixa_confirmada  boolean NOT NULL DEFAULT false
-  created_at, updated_at
+  criado_em, alterado_em
 
 nota_itens
   id                 bigserial PK
@@ -80,7 +84,7 @@ nota_itens
     "codigo": "SALDO_INSUFICIENTE",
     "mensagem": "Saldo insuficiente para 1 produto",
     "detalhes": [
-      { "produto_codigo": "CAD-001", "solicitado": 5, "disponivel": 2 }
+      { "produto_id": 1, "produto_codigo": "CAD-001", "solicitado": 5, "disponivel": 2 }
     ]
   }
 }
@@ -90,9 +94,12 @@ nota_itens
 |---|---|---|
 | 400 | `PAYLOAD_INVALIDO` | corpo malformado ou campo obrigatório ausente |
 | 404 | `NAO_ENCONTRADO` | id inexistente |
+| 404 | `PRODUTO_NAO_ENCONTRADO` | o produto saiu do cadastro do estoque |
 | 409 | `SALDO_INSUFICIENTE` | pelo menos um item não tem saldo |
+| 409 | `CODIGO_EM_USO` | já existe produto com aquele código |
 | 409 | `NOTA_NAO_ABERTA` | tentou imprimir nota já `FECHADA` |
 | 409 | `NOTA_VAZIA` | tentou imprimir nota sem itens |
+| 409 | `BAIXA_PENDENTE` | o estoque já debitou e a nota ainda não fechou |
 | 503 | `ESTOQUE_INDISPONIVEL` | o estoque não respondeu, deu timeout, ou o disjuntor está aberto |
 | 500 | `ERRO_INTERNO` | qualquer outra coisa — nunca vaza detalhe interno |
 

@@ -121,6 +121,8 @@ Um `409` é o sistema **funcionando** e dizendo não — saldo insuficiente, not
 
 Um `503` é o sistema **quebrado** — o estoque não respondeu. O usuário não precisa mudar nada, só tentar de novo.
 
+A régua é "quem respondeu", não "qual status veio". Um `404` do estoque na hora da baixa — produto apagado do cadastro depois de entrar na nota — é o estoque respondendo, e por isso sobe como `404 PRODUTO_NAO_ENCONTRADO`, sem botão de tentar de novo. Tratá-lo como indisponibilidade acusaria de queda um serviço que está no ar e ofereceria um retry que nunca ia passar.
+
 São mensagens diferentes na tela e ações diferentes: o 503 mostra um botão "Tentar novamente", o 409 não. Essa separação é o que dá sentido ao requisito de "feedback apropriado ao usuário".
 
 ### Erro tipado com detalhes
@@ -274,7 +276,7 @@ Estes dois existem por causa de uma lição: a suíte do estoque passava com 100
 
 ## Ajuste de saldo pelo cadastro
 
-O `PUT /produtos/:id` grava o saldo enviado de forma absoluta, sem passar pelo bloqueio usado na baixa. Isso significa que um formulário aberto antes de uma impressão e salvo depois sobrescreve o saldo já debitado.
+O estoque expõe `PUT /produtos/:id`, que grava o saldo enviado de forma absoluta, sem passar pelo bloqueio usado na baixa. Não há tela de edição — o endpoint existe para ajuste via API — mas a ressalva vale: uma chamada montada antes de uma impressão e enviada depois sobrescreve o saldo já debitado.
 
 É uma escolha, não um descuido: o enunciado pede saldo como campo do cadastro de produto, e ajuste de inventário em ERP funciona assim mesmo — o número informado pelo operador substitui o calculado, porque a contagem física é a autoridade. O que um sistema em produção acrescentaria é registro de quem ajustou, quando e por quê, para o histórico não se perder.
 

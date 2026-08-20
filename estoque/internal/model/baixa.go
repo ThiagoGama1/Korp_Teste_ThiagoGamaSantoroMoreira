@@ -14,8 +14,12 @@ type Baixa struct {
 	Chave  string `json:"chave"  gorm:"uniqueIndex;not null"`
 	Status string `json:"status" gorm:"not null"`
 
-	// []byte com type:jsonb em vez de um tipo de gorm.io/datatypes: evita uma
+	// []byte com type:json em vez de um tipo de gorm.io/datatypes: evita uma
 	// dependencia inteira para guardar bytes que ja chegam em JSON.
+	//
+	// json e nao jsonb de proposito — a migration 0002 explica: jsonb reordena as
+	// chaves e reinsere espacos, entao o texto guardado nao seria o texto
+	// devolvido, e a resposta repetida deixaria de ser identica byte a byte.
 	Resposta []byte `json:"resposta" gorm:"type:json;not null"`
 
 	CriadoEm time.Time `json:"criado_em" gorm:"autoCreateTime"`
