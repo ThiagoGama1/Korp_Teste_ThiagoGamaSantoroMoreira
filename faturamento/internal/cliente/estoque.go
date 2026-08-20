@@ -121,6 +121,16 @@ func (e *Estoque) Baixar(ctx context.Context, chave string, itens []ItemBaixa) (
 	if resp.StatusCode == http.StatusConflict {
 		return nil, lerFalhaDeSaldo(resp)
 	}
+
+	// 404 aqui significa que um produto da nota foi apagado do cadastro depois de
+	// ter sido incluído. O estoque respondeu — ele só disse que o produto não
+	// existe mais. Cair no ErrIndisponivel abaixo transformaria isso num 503 "o
+	// serviço de estoque não está respondendo", que é falso e manda o usuário
+	// ficar clicando em "Tentar novamente" contra um erro que nunca vai passar.
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, ErrProdutoNaoEncontrado
+	}
+
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("%w: respondeu %d", ErrIndisponivel, resp.StatusCode)
 	}
