@@ -1,5 +1,5 @@
-import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
-import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { Component, OnDestroy, OnInit, ViewChild, inject, signal } from '@angular/core';
+import { FormBuilder, FormGroupDirective, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -55,6 +55,15 @@ export class Produtos implements OnInit, OnDestroy {
   readonly salvando = signal(false);
 
   readonly colunas = ['codigo', 'descricao', 'saldo', 'acoes'];
+
+  /**
+   * O FormGroup guarda os valores; quem guarda o "ja foi enviado" e a diretiva.
+   * Precisamos dela porque form.reset() limpa os valores mas nao desmarca o
+   * submitted — e o Material mostra erro quando o campo esta invalido E o
+   * formulario foi enviado. Sem isso, os campos voltavam vermelhos logo depois
+   * de um cadastro bem-sucedido, como se algo tivesse falhado.
+   */
+  @ViewChild(FormGroupDirective) private readonly diretiva?: FormGroupDirective;
 
   readonly form = this.fb.nonNullable.group({
     codigo: ['', Validators.required],
@@ -113,7 +122,7 @@ export class Produtos implements OnInit, OnDestroy {
           // update em vez de set: cresce a lista a partir do valor atual, sem
           // precisar recarregar tudo do servidor.
           this.produtos.update((lista) => [...lista, produto]);
-          this.form.reset({ codigo: '', descricao: '', saldo: 0 });
+          this.limparFormulario();
           this.avisar('Produto ' + produto.codigo + ' cadastrado.');
         },
         error: (erro) => this.avisar(mensagemDeErro(erro)),
@@ -131,6 +140,16 @@ export class Produtos implements OnInit, OnDestroy {
         },
         error: (erro) => this.avisar(mensagemDeErro(erro)),
       });
+  }
+
+  /** resetForm em vez de form.reset: zera os valores E o estado de enviado. */
+  private limparFormulario(): void {
+    const vazio = { codigo: '', descricao: '', saldo: 0 };
+    if (this.diretiva) {
+      this.diretiva.resetForm(vazio);
+      return;
+    }
+    this.form.reset(vazio);
   }
 
   private avisar(mensagem: string): void {

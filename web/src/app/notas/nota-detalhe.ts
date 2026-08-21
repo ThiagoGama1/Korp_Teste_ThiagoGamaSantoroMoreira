@@ -1,5 +1,12 @@
-import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
-import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { Component, OnDestroy, OnInit, ViewChild, computed, inject, signal } from '@angular/core';
+import {
+  AbstractControl,
+  FormBuilder,
+  FormGroupDirective,
+  ReactiveFormsModule,
+  ValidationErrors,
+  Validators,
+} from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -71,9 +78,12 @@ export class NotaDetalhe implements OnInit, OnDestroy {
   readonly temItens = computed(() => (this.nota()?.itens.length ?? 0) > 0);
   readonly podeImprimir = computed(() => this.estaAberta() && this.temItens() && !this.imprimindo());
 
+  /** Ver o comentario equivalente em produtos.ts — zera tambem o "ja enviado". */
+  @ViewChild(FormGroupDirective) private readonly diretiva?: FormGroupDirective;
+
   readonly form = this.fb.nonNullable.group({
     produtoId: [0, [Validators.required, Validators.min(1)]],
-    quantidade: [1, [Validators.required, Validators.min(1)]],
+    quantidade: [1, [Validators.required, Validators.min(1), inteiro]],
   });
 
   ngOnInit(): void {
@@ -148,7 +158,8 @@ export class NotaDetalhe implements OnInit, OnDestroy {
         // recarregar nem remontar a lista na mão.
         next: (atualizada) => {
           this.nota.set(atualizada);
-          this.form.reset({ produtoId: 0, quantidade: 1 });
+          this.limparErroDeImpressao();
+          this.limparFormulario();
         },
         error: (erro) => this.avisar(mensagemDeErro(erro)),
       });
@@ -164,9 +175,34 @@ export class NotaDetalhe implements OnInit, OnDestroy {
       .removerItem(nota.id, itemId)
       .pipe(takeUntil(this.destruido$))
       .subscribe({
-        next: (atualizada) => this.nota.set(atualizada),
+        next: (atualizada) => {
+          this.nota.set(atualizada);
+          this.limparErroDeImpressao();
+        },
         error: (erro) => this.avisar(mensagemDeErro(erro)),
       });
+  }
+
+  /**
+   * Mexer nos itens invalida o erro da impressao anterior.
+   *
+   * Sem isto, quem tomava "nao ha saldo suficiente", removia o item e colocava
+   * uma quantidade que cabe, continuava vendo a faixa vermelha na tela. O erro
+   * so era reescrito na tentativa seguinte, e ate la a tela dizia que havia um
+   * problema que ja tinha sido resolvido.
+   */
+  private limparErroDeImpressao(): void {
+    this.erroImpressao.set(null);
+    this.podeTentarNovamente.set(false);
+  }
+
+  private limparFormulario(): void {
+    const vazio = { produtoId: 0, quantidade: 1 };
+    if (this.diretiva) {
+      this.diretiva.resetForm(vazio);
+      return;
+    }
+    this.form.reset(vazio);
   }
 
   /**
@@ -208,4 +244,17 @@ export class NotaDetalhe implements OnInit, OnDestroy {
   private avisar(mensagem: string): void {
     this.aviso.open(mensagem, 'Fechar', { duration: 5000 });
   }
+}
+
+/**
+ * O input type="number" aceita "1,5" digitado, e o backend recusa com "corpo da
+ * requisicao invalido" — mensagem de API, nao de tela. Barrar aqui devolve o
+ * erro no campo certo, antes de sair requisicao.
+ */
+function inteiro(controle: AbstractControl): ValidationErrors | null {
+  const valor = controle.value;
+  if (valor === null || valor === '') {
+    return null;
+  }
+  return Number.isInteger(Number(valor)) ? null : { inteiro: true };
 }

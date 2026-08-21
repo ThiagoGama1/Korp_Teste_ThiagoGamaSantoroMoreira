@@ -29,3 +29,31 @@
   margin: 0 auto;
   padding: 2rem 1.5rem;
 }
+
+/* Abaixo de 600px o titulo inteiro nao cabe junto com os dois links, e o
+   "Notas" ficava cortado na borda. O titulo encolhe primeiro porque e
+   decorativo; a navegacao e a unica coisa da barra que precisa continuar
+   clicavel. */
+@media (max-width: 600px) {
+  .barra {
+    gap: 0.5rem;
+    padding-inline: 0.5rem;
+  }
+
+  .titulo {
+    font-size: 0.9rem;
+    /* Cede espaco para a navegacao em vez de empurrar ela para fora. */
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .navegacao {
+    flex: none;
+  }
+
+  .conteudo {
+    padding: 1.25rem 0.75rem;
+  }
+}

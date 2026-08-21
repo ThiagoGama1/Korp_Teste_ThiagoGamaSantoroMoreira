@@ -7,12 +7,12 @@
     <form [formGroup]="form" (ngSubmit)="salvar()" class="formulario" autocomplete="off">
       <mat-form-field appearance="outline">
         <mat-label>Código</mat-label>
-        <input matInput formControlName="codigo" autocomplete="off" />
+        <input matInput formControlName="codigo" maxlength="30" autocomplete="off" />
       </mat-form-field>
 
       <mat-form-field appearance="outline">
         <mat-label>Descrição</mat-label>
-        <input matInput formControlName="descricao" autocomplete="off" />
+        <input matInput formControlName="descricao" maxlength="120" autocomplete="off" />
       </mat-form-field>
 
       <mat-form-field appearance="outline" class="campo-saldo">

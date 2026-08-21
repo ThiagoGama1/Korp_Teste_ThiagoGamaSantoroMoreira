@@ -71,7 +71,10 @@
 
           <mat-form-field appearance="outline" class="campo-qtd">
             <mat-label>Quantidade</mat-label>
-            <input matInput type="number" formControlName="quantidade" min="1" autocomplete="off" />
+            <input matInput type="number" formControlName="quantidade" min="1" step="1" autocomplete="off" />
+            @if (form.controls.quantidade.hasError('inteiro')) {
+              <mat-error>Use um número inteiro.</mat-error>
+            }
           </mat-form-field>
 
           <button mat-stroked-button type="submit" [disabled]="adicionando()">
@@ -120,6 +123,16 @@
           }
         </div>
       }
+    </mat-card-content>
+  </mat-card>
+} @else if (!carregando()) {
+  <!-- Sem este bloco, uma nota inexistente deixava a tela completamente em
+       branco depois que o aviso sumia — parece que a aplicação quebrou. -->
+  <mat-card class="cartao">
+    <mat-card-content class="nao-encontrada">
+      <mat-icon>search_off</mat-icon>
+      <p>Esta nota não existe. Ela pode ter sido apagada.</p>
+      <button mat-flat-button routerLink="/notas">Ver todas as notas</button>
     </mat-card-content>
   </mat-card>
 }
