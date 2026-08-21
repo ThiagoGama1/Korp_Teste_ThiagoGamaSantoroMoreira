@@ -43,6 +43,11 @@
           <th mat-header-cell *matHeaderCellDef></th>
           <td mat-cell *matCellDef="let nota">
             <button mat-button (click)="abrir(nota)">Abrir</button>
+            @if (podeApagar(nota)) {
+              <button mat-icon-button (click)="remover(nota)" aria-label="Apagar nota">
+                <mat-icon>delete_outline</mat-icon>
+              </button>
+            }
           </td>
         </ng-container>
 

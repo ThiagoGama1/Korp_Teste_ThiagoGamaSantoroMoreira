@@ -93,6 +93,32 @@ func (s *Nota) AdicionarItem(ctx context.Context, notaID, produtoID uint, quanti
 	return s.Buscar(notaID)
 }
 
+// Remover apaga uma nota inteira. Passa pela mesma guarda das outras escritas:
+// nota fechada nao se apaga, e nota cuja baixa ja foi confirmada tambem nao.
+//
+// A segunda parte e a que importa. Uma nota com baixa confirmada ja tirou saldo
+// do estoque; apagar ela deixaria o saldo debitado sem nenhum documento que
+// justifique o debito, e nao existe como devolver — o estoque e outro servico,
+// com outro banco, e a baixa la e definitiva.
+//
+// Os itens somem junto pelo ON DELETE CASCADE declarado na migration.
+func (s *Nota) Remover(notaID uint) error {
+	if _, err := s.exigirNotaAberta(notaID); err != nil {
+		return err
+	}
+
+	resultado := s.db.Delete(&model.Nota{}, notaID)
+	if resultado.Error != nil {
+		return fmt.Errorf("service: falha ao remover a nota %d: %w", notaID, resultado.Error)
+	}
+	// Delete de id inexistente nao e erro no GORM: apaga zero linhas e devolve
+	// sucesso. Sem esta checagem, apagar duas vezes daria certo as duas.
+	if resultado.RowsAffected == 0 {
+		return ErrNaoEncontrado
+	}
+	return nil
+}
+
 func (s *Nota) RemoverItem(notaID, itemID uint) (*model.Nota, error) {
 	if _, err := s.exigirNotaAberta(notaID); err != nil {
 		return nil, err

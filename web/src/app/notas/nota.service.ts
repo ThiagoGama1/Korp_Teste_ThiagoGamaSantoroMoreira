@@ -30,6 +30,11 @@ export class NotaService {
     return this.http.post<Nota>(this.url, {});
   }
 
+  /** Só funciona em nota ABERTA sem baixa confirmada — o backend recusa o resto. */
+  remover(notaId: number): Observable<void> {
+    return this.http.delete<void>(`${this.url}/${notaId}`);
+  }
+
   adicionarItem(notaId: number, produtoId: number, quantidade: number): Observable<Nota> {
     return this.http.post<Nota>(`${this.url}/${notaId}/itens`, {
       produto_id: produtoId,

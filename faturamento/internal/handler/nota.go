@@ -79,6 +79,19 @@ func (h *Nota) AdicionarItem(c *gin.Context) {
 	c.JSON(http.StatusOK, nota)
 }
 
+func (h *Nota) Remover(c *gin.Context) {
+	id, ok := idDaRota(c, "id")
+	if !ok {
+		return
+	}
+
+	if err := h.svc.Remover(id); err != nil {
+		responderErroDeServico(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
 func (h *Nota) RemoverItem(c *gin.Context) {
 	notaID, ok := idDaRota(c, "id")
 	if !ok {

@@ -79,6 +79,29 @@ export class Notas implements OnInit, OnDestroy {
       });
   }
 
+  /**
+   * Nota fechada não aparece com botão de apagar, e nota que já baixou o estoque
+   * também não: o saldo saiu e não tem como devolver, então o documento precisa
+   * continuar existindo. O backend recusa de qualquer jeito — isto aqui só evita
+   * oferecer na tela um botão que ia dar erro.
+   */
+  podeApagar(nota: Nota): boolean {
+    return nota.status === 'ABERTA' && !nota.baixa_confirmada;
+  }
+
+  remover(nota: Nota): void {
+    this.service
+      .remover(nota.id)
+      .pipe(takeUntil(this.destruido$))
+      .subscribe({
+        next: () => {
+          this.notas.update((lista) => lista.filter((n) => n.id !== nota.id));
+          this.aviso.open('Nota ' + nota.numero + ' apagada.', 'Fechar', { duration: 5000 });
+        },
+        error: (erro) => this.aviso.open(mensagemDeErro(erro), 'Fechar', { duration: 5000 }),
+      });
+  }
+
   abrir(nota: Nota): void {
     this.router.navigate(['/notas', nota.id]);
   }
