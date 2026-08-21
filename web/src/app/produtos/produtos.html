@@ -4,20 +4,20 @@
   </mat-card-header>
 
   <mat-card-content>
-    <form [formGroup]="form" (ngSubmit)="salvar()" class="formulario">
+    <form [formGroup]="form" (ngSubmit)="salvar()" class="formulario" autocomplete="off">
       <mat-form-field appearance="outline">
         <mat-label>Código</mat-label>
-        <input matInput formControlName="codigo" placeholder="CAD-001" />
+        <input matInput formControlName="codigo" placeholder="CAD-001" autocomplete="off" />
       </mat-form-field>
 
       <mat-form-field appearance="outline">
         <mat-label>Descrição</mat-label>
-        <input matInput formControlName="descricao" placeholder="Cadeira Gamer" />
+        <input matInput formControlName="descricao" placeholder="Cadeira Gamer" autocomplete="off" />
       </mat-form-field>
 
       <mat-form-field appearance="outline" class="campo-saldo">
         <mat-label>Saldo</mat-label>
-        <input matInput type="number" formControlName="saldo" min="0" />
+        <input matInput type="number" formControlName="saldo" min="0" autocomplete="off" />
       </mat-form-field>
 
       <button mat-flat-button type="submit" [disabled]="salvando()">
