@@ -2,8 +2,6 @@
 
 Respostas aos itens pedidos no documento do desafio.
 
-> **Rascunho** — reescrever com as minhas palavras antes de gravar o vídeo.
-
 ---
 
 ## 1. Quais ciclos de vida do Angular foram utilizados
